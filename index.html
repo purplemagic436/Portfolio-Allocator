@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tax-Efficient Multi-Account Portfolio Allocator</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-green: #34d399;
+            --accent-amber: #fbbf24;
+            --danger-color: #f87171;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: var(--bg-color); color: var(--text-primary); font-family: var(--font-family); line-height: 1.5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        header { margin-bottom: 24px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; }
+        h1 { font-size: 1.5rem; font-weight: 600; color: var(--text-primary); }
+        p.subtitle { color: var(--text-secondary); font-size: 0.9rem; margin-top: 4px; }
+
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+
+        .card { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+        .card-header { font-weight: 600; font-size: 1.1rem; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+
+        .form-group { margin-bottom: 12px; }
+        label { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 4px; }
+        input[type="text"], input[type="number"], select { width: 100%; padding: 8px 12px; background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 0.9rem; }
+        input:focus, select:focus { outline: none; border-color: var(--accent-blue); }
+
+        .account-row { display: grid; grid-template-columns: 2fr 1.5fr 1.5fr 1.5fr 40px; gap: 8px; align-items: center; margin-bottom: 8px; }
+        
+        button { background-color: var(--accent-blue); color: #0f172a; border: none; padding: 8px 16px; font-weight: 600; border-radius: 4px; cursor: pointer; font-size: 0.9rem; transition: opacity 0.2s; }
+        button:hover { opacity: 0.9; }
+        button.btn-secondary { background-color: transparent; border: 1px solid var(--border-color); color: var(--text-primary); }
+        button.btn-danger { background-color: transparent; border: 1px solid var(--danger-color); color: var(--danger-color); padding: 4px 8px; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.85rem; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border-color); }
+        th { color: var(--text-secondary); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
+        
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .badge-taxable { background-color: rgba(56, 189, 248, 0.15); color: var(--accent-blue); }
+        .badge-deferred { background-color: rgba(251, 191, 36, 0.15); color: var(--accent-amber); }
+        .badge-free { background-color: rgba(52, 211, 153, 0.15); color: var(--accent-green); }
+
+        .summary-box { background-color: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 6px; padding: 12px; margin-bottom: 16px; font-size: 0.9rem; }
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 8px; }
+        .metric-card { background: var(--bg-color); padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border-color); }
+        .metric-title { font-size: 0.75rem; color: var(--text-secondary); }
+        .metric-value { font-size: 1.1rem; font-weight: 600; color: var(--text-primary); }
+        .text-sheltered { color: var(--accent-green); }
+        .text-taxable { color: var(--accent-blue); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Tax-Efficient Portfolio Location Generator</h1>
+        <p class="subtitle">Client-side asset location optimizer across taxable, tax-deferred, and tax-free accounts.</p>
+    </header>
+
+    <div class="grid-2">
+        <!-- Input: Account Setup -->
+        <div class="card">
+            <div class="card-header">
+                <span>1. Accounts & Balances</span>
+                <button class="btn-secondary" onclick="addAccount()">+ Add Account</button>
+            </div>
+            <div id="accountsContainer"></div>
+        </div>
+
+        <!-- Input: Target Allocation & Tax -->
+        <div class="card">
+            <div class="card-header">2. Targets & Tax Settings</div>
+            
+            <div class="form-group">
+                <label>Asset Location Preference Strategy</label>
+                <select id="locationStrategy" onchange="calculateAllocation()">
+                    <option value="roth-first" selected>Protect AGI & Maximize Roth Growth (Roth First for Equities)</option>
+                    <option value="ftc-first">Maximize Current Foreign Tax Credit (Taxable First for Int'l)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Broad US Equity Target (%)</label>
+                <input type="number" id="targetUsEquity" value="48" onchange="calculateAllocation()">
+            </div>
+            <div class="form-group">
+                <label>Broad International Equity Target (%)</label>
+                <input type="number" id="targetIntlEquity" value="32" onchange="calculateAllocation()">
+            </div>
+            <div class="form-group">
+                <label>US Small Cap Value Target (%)</label>
+                <input type="number" id="targetUsScv" value="6.25" step="0.01" onchange="calculateAllocation()">
+            </div>
+            <div class="form-group">
+                <label>International Small Cap Value Target (%)</label>
+                <input type="number" id="targetIntlScv" value="3.75" step="0.01" onchange="calculateAllocation()">
+            </div>
+            <div class="form-group">
+                <label>Bonds Target (%)</label>
+                <input type="number" id="targetBonds" value="10" onchange="calculateAllocation()">
+            </div>
+            
+            <div style="margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <div class="form-group">
+                    <label>Federal Ordinary Tax Bracket (%)</label>
+                    <input type="number" id="taxFederal" value="22" onchange="calculateAllocation()">
+                </div>
+                <div class="form-group">
+                    <label>State & Local Tax Bracket (%)</label>
+                    <input type="number" id="taxState" value="7.95" step="0.01" onchange="calculateAllocation()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Output: Generated Plan -->
+    <div class="card">
+        <div class="card-header">3. Generated Optimized Allocation</div>
+        <div id="summaryMetrics" class="summary-box"></div>
+        <div id="resultsContainer"></div>
+    </div>
+</div>
+
+<script>
+    let state = {
+        accounts: [
+            { id: '1', name: 'Fidelity 401(k)', type: 'tax-deferred', provider: 'fidelity', balance: 100000 },
+            { id: '2', name: 'Vanguard Roth IRA', type: 'tax-free', provider: 'vanguard', balance: 50000 },
+            { id: '3', name: 'Vanguard Taxable', type: 'taxable', provider: 'vanguard', balance: 10000 }
+        ]
+    };
+
+    const fundMap = {
+        usEquity: {
+            vanguard: { ticker: 'VTI', name: 'Vanguard Total Stock Market ETF', er: 0.03 },
+            fidelity: { ticker: 'FSKAX', name: 'Fidelity Total Market Index Fund', er: 0.015 },
+            generic: { ticker: 'VTI', name: 'Total Stock Market ETF', er: 0.03 }
+        },
+        intlEquity: {
+            vanguard: { ticker: 'VXUS', name: 'Vanguard Total Int\'l Stock ETF', er: 0.07 },
+            fidelity: { ticker: 'FTIHX', name: 'Fidelity Total Int\'l Index Fund', er: 0.06 },
+            generic: { ticker: 'VXUS', name: 'Total Int\'l Stock ETF', er: 0.07 }
+        },
+        usScv: {
+            vanguard: { ticker: 'AVUV', name: 'Avantis US Small Cap Value ETF', er: 0.25 },
+            fidelity: { ticker: 'AVUV', name: 'Avantis US Small Cap Value ETF', er: 0.25 },
+            generic: { ticker: 'AVUV', name: 'Avantis US Small Cap Value ETF', er: 0.25 }
+        },
+        intlScv: {
+            vanguard: { ticker: 'AVDV', name: 'Avantis Int\'l Small Cap Value ETF', er: 0.36 },
+            fidelity: { ticker: 'AVDV', name: 'Avantis Int\'l Small Cap Value ETF', er: 0.36 },
+            generic: { ticker: 'AVDV', name: 'Avantis Int\'l Small Cap Value ETF', er: 0.36 }
+        },
+		bonds: {
+			vanguard: { ticker: 'VGIT', name: 'Vanguard Intermediate-Term Treasury ETF', er: 0.04 },
+			fidelity: { ticker: 'FUAMX', name: 'Fidelity Intermediate Treasury Index Fund', er: 0.03 },
+			generic: { ticker: 'VGIT', name: 'Intermediate Treasury ETF', er: 0.04 }
+		}    
+	};
+
+    const assetTaxProfiles = {
+		usEquity:   { yield: 0.014, qualPct: 1.00, ftc: 0.00, stateExempt: false },
+        intlEquity: { yield: 0.030, qualPct: 0.73, ftc: 0.0024, stateExempt: false },
+        usScv:       { yield: 0.020, qualPct: 0.95, ftc: 0.00, stateExempt: false },
+        intlScv:    { yield: 0.032, qualPct: 0.70, ftc: 0.0025, stateExempt: false },
+        bonds:      { yield: 0.040, qualPct: 0.00, ftc: 0.00, stateExempt: true }
+    };
+
+    function getTaxRates() {
+        const fedOrd = (parseFloat(document.getElementById('taxFederal').value) || 0) / 100;
+        const state = (parseFloat(document.getElementById('taxState').value) || 0) / 100;
+
+        let fedQual = 0.15;
+        if (fedOrd <= 0.12) fedQual = 0.0;
+        else if (fedOrd > 0.35) fedQual = 0.20;
+
+        return {
+            ordRate: fedOrd + state,
+            qualRate: fedQual + state
+        };
+    }
+
+	function calculateAssetTaxDragRate(assetKey, rates) {
+        const profile = assetTaxProfiles[assetKey] || { yield: 0.02, qualPct: 1.0, ftc: 0, stateExempt: false };
+        const fedOrd = (parseFloat(document.getElementById('taxFederal').value) || 0) / 100;
+        
+        // Use federal rate only if asset is state tax exempt (e.g., US Treasuries)
+        const effectiveOrdRate = profile.stateExempt ? fedOrd : rates.ordRate;
+        
+        const qualTax = profile.yield * profile.qualPct * rates.qualRate;
+        const ordTax = profile.yield * (1 - profile.qualPct) * effectiveOrdRate;
+        const grossTax = qualTax + ordTax;
+        return Math.max(0, grossTax - profile.ftc);
+    }
+
+    function renderAccountsUI() {
+        const container = document.getElementById('accountsContainer');
+        container.innerHTML = '';
+
+        state.accounts.forEach((acc) => {
+            const row = document.createElement('div');
+            row.className = 'account-row';
+            row.innerHTML = `
+                <input type="text" value="${acc.name}" placeholder="Account Name" onchange="updateAccount('${acc.id}', 'name', this.value)">
+                <input type="number" value="${acc.balance}" placeholder="Balance" onchange="updateAccount('${acc.id}', 'balance', parseFloat(this.value) || 0)">
+                <select onchange="updateAccount('${acc.id}', 'type', this.value)">
+                    <option value="taxable" ${acc.type === 'taxable' ? 'selected' : ''}>Taxable</option>
+                    <option value="tax-deferred" ${acc.type === 'tax-deferred' ? 'selected' : ''}>Tax-Deferred (401k/IRA)</option>
+                    <option value="tax-free" ${acc.type === 'tax-free' ? 'selected' : ''}>Tax-Free (Roth)</option>
+                </select>
+                <select onchange="updateAccount('${acc.id}', 'provider', this.value)">
+                    <option value="vanguard" ${acc.provider === 'vanguard' ? 'selected' : ''}>Vanguard</option>
+                    <option value="fidelity" ${acc.provider === 'fidelity' ? 'selected' : ''}>Fidelity</option>
+                    <option value="generic" ${acc.provider === 'generic' ? 'selected' : ''}>Other Brokerage</option>
+                </select>
+                <button class="btn-danger" onclick="removeAccount('${acc.id}')">X</button>
+            `;
+            container.appendChild(row);
+        });
+    }
+
+    function addAccount() {
+        state.accounts.push({
+            id: Date.now().toString(),
+            name: 'New Account',
+            type: 'tax-deferred',
+            provider: 'fidelity',
+            balance: 50000
+        });
+        renderAccountsUI();
+        calculateAllocation();
+    }
+
+    function removeAccount(id) {
+        state.accounts = state.accounts.filter(a => a.id !== id);
+        renderAccountsUI();
+        calculateAllocation();
+    }
+
+    function updateAccount(id, field, value) {
+        const acc = state.accounts.find(a => a.id === id);
+        if (acc) {
+            acc[field] = value;
+            calculateAllocation();
+        }
+    }
+
+    function calculateAllocation() {
+        const totalPortfolio = state.accounts.reduce((sum, a) => sum + a.balance, 0);
+        if (totalPortfolio === 0) return;
+
+        const strategy = document.getElementById('locationStrategy').value;
+
+        const targets = {
+            usEquity: (parseFloat(document.getElementById('targetUsEquity').value) || 0) / 100,
+            intlEquity: (parseFloat(document.getElementById('targetIntlEquity').value) || 0) / 100,
+            usScv: (parseFloat(document.getElementById('targetUsScv').value) || 0) / 100,
+            intlScv: (parseFloat(document.getElementById('targetIntlScv').value) || 0) / 100,
+            bonds: (parseFloat(document.getElementById('targetBonds').value) || 0) / 100
+        };
+
+        const remainingNeeded = {
+            bonds: totalPortfolio * targets.bonds,
+            usScv: totalPortfolio * targets.usScv,
+            intlScv: totalPortfolio * targets.intlScv,
+            usEquity: totalPortfolio * targets.usEquity,
+            intlEquity: totalPortfolio * targets.intlEquity
+        };
+
+        let accountsWorking = state.accounts.map(a => ({
+            ...a,
+            capacityLeft: a.balance,
+            allocations: []
+        }));
+
+        function allocateAsset(assetKey, preferredTypes) {
+            for (let type of preferredTypes) {
+                if (remainingNeeded[assetKey] <= 0.01) break;
+
+                const eligible = accountsWorking.filter(a => a.type === type && a.capacityLeft > 0);
+                for (let acc of eligible) {
+                    if (remainingNeeded[assetKey] <= 0.01) break;
+
+                    const fill = Math.min(remainingNeeded[assetKey], acc.capacityLeft);
+                    if (fill > 0) {
+                        acc.allocations.push({
+                            assetKey: assetKey,
+                            dollars: fill
+                        });
+                        acc.capacityLeft -= fill;
+                        remainingNeeded[assetKey] -= fill;
+                    }
+                }
+            }
+        }
+
+        const rates = getTaxRates();
+
+        // Priority 1: Bonds -> Tax-Deferred, Taxable, Tax-Free
+        allocateAsset('bonds', ['tax-deferred', 'taxable', 'tax-free']);
+
+        // Priority 2: Small Cap Value
+        const scvAssets = ['usScv', 'intlScv'].sort((a, b) => {
+            return calculateAssetTaxDragRate(b, rates) - calculateAssetTaxDragRate(a, rates);
+        });
+
+        scvAssets.forEach(assetKey => {
+            if (assetKey === 'intlScv' && strategy === 'ftc-first') {
+                allocateAsset(assetKey, ['taxable', 'tax-free', 'tax-deferred']);
+            } else {
+                allocateAsset(assetKey, ['tax-free', 'tax-deferred', 'taxable']);
+            }
+        });
+
+        // Priority 3: Low-Yield US Broad Equity
+        allocateAsset('usEquity', ['taxable', 'tax-deferred', 'tax-free']);
+
+        // Priority 4: Broad International Equity
+        if (strategy === 'ftc-first') {
+            allocateAsset('intlEquity', ['taxable', 'tax-free', 'tax-deferred']);
+        } else {
+            allocateAsset('intlEquity', ['tax-free', 'tax-deferred', 'taxable']);
+        }
+
+        renderResults(accountsWorking, totalPortfolio);
+    }
+
+    function renderResults(allocatedAccounts, totalPortfolio) {
+        const container = document.getElementById('resultsContainer');
+        const summaryBox = document.getElementById('summaryMetrics');
+        container.innerHTML = '';
+
+        const rates = getTaxRates();
+        let totalWeightedEr = 0;
+        let actualTaxDrag = 0;
+        let shelteredTaxDrag = 0;
+
+        allocatedAccounts.forEach(acc => {
+            if (acc.balance === 0) return;
+
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.style.marginBottom = '12px';
+
+            let badgeClass = 'badge-deferred';
+            if (acc.type === 'taxable') badgeClass = 'badge-taxable';
+            if (acc.type === 'tax-free') badgeClass = 'badge-free';
+
+            let rowsHtml = '';
+            acc.allocations.forEach(alloc => {
+                const fundInfo = (fundMap[alloc.assetKey] && fundMap[alloc.assetKey][acc.provider]) 
+                    ? fundMap[alloc.assetKey][acc.provider] 
+                    : fundMap[alloc.assetKey]['generic'];
+
+                const pctOfAccount = (alloc.dollars / acc.balance) * 100;
+                const pctOfTotal = (alloc.dollars / totalPortfolio) * 100;
+                
+                totalWeightedEr += (alloc.dollars / totalPortfolio) * fundInfo.er;
+
+                const dragRate = calculateAssetTaxDragRate(alloc.assetKey, rates);
+                const dragDollars = alloc.dollars * dragRate;
+
+                if (acc.type === 'taxable') {
+                    actualTaxDrag += dragDollars;
+                } else {
+                    shelteredTaxDrag += dragDollars;
+                }
+
+                const statusLabel = acc.type === 'taxable' ? 'Owed' : 'Sheltered';
+                const statusClass = acc.type === 'taxable' ? 'text-taxable' : 'text-sheltered';
+
+                rowsHtml += `
+                    <tr>
+                        <td><strong>${fundInfo.ticker}</strong></td>
+                        <td>${fundInfo.name}</td>
+                        <td>$${Math.round(alloc.dollars).toLocaleString()}</td>
+                        <td>${pctOfAccount.toFixed(1)}%</td>
+                        <td>${pctOfTotal.toFixed(2)}%</td>
+                        <td>${fundInfo.er.toFixed(3)}%</td>
+                        <td class="${statusClass}">
+                            $${Math.round(dragDollars).toLocaleString()}/yr (${(dragRate * 100).toFixed(2)}%)
+                            <span style="font-size:0.7rem; opacity:0.8;">[${statusLabel}]</span>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+                    <span style="font-weight:600;">${acc.name} ($${acc.balance.toLocaleString()})</span>
+                    <span class="badge ${badgeClass}">${acc.type.toUpperCase()}</span>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Fund Name</th>
+                            <th>Amount</th>
+                            <th>Account %</th>
+                            <th>Total %</th>
+                            <th>Exp. Ratio</th>
+                            <th>Est. Tax Drag (In Taxable Account)</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            `;
+
+            container.appendChild(card);
+        });
+
+        const currentStrategy = document.getElementById('locationStrategy').value;
+        const strategyText = currentStrategy === 'roth-first' 
+            ? 'Protect AGI & Maximize Roth Growth (Roth prioritizes growth/international equities).' 
+            : 'Maximize Foreign Tax Credit (Taxable prioritizes international equities).';
+
+        summaryBox.innerHTML = `
+            <div><strong>Portfolio Strategy Summary</strong> (${strategyText})</div>
+            <div class="summary-grid">
+                <div class="metric-card">
+                    <div class="metric-title">TOTAL PORTFOLIO</div>
+                    <div class="metric-value">$${totalPortfolio.toLocaleString()}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">WEIGHTED EXPENSE RATIO</div>
+                    <div class="metric-value">${totalWeightedEr.toFixed(3)}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">ACTUAL TAX DRAG (TAXABLE)</div>
+                    <div class="metric-value text-taxable">$${Math.round(actualTaxDrag).toLocaleString()}/yr</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">TAX DRAG SHELTERED</div>
+                    <div class="metric-value text-sheltered">$${Math.round(shelteredTaxDrag).toLocaleString()}/yr</div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderAccountsUI();
+    calculateAllocation();
+</script>
+</body>
+</html>
