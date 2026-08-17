@@ -20,7 +20,7 @@
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: var(--bg-color); color: var(--text-primary); font-family: var(--font-family); line-height: 1.5; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
+        .container { max-width: 1250px; margin: 0 auto; }
         
         header { margin-bottom: 24px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; }
         h1 { font-size: 1.5rem; font-weight: 600; color: var(--text-primary); }
@@ -54,7 +54,7 @@
         .badge-free { background-color: rgba(52, 211, 153, 0.15); color: var(--accent-green); }
 
         .summary-box { background-color: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 6px; padding: 12px; margin-bottom: 16px; font-size: 0.9rem; }
-        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 8px; }
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 8px; }
         .metric-card { background: var(--bg-color); padding: 8px 12px; border-radius: 4px; border: 1px solid var(--border-color); }
         .metric-title { font-size: 0.75rem; color: var(--text-secondary); }
         .metric-value { font-size: 1.1rem; font-weight: 600; color: var(--text-primary); }
@@ -82,14 +82,27 @@
 
         <!-- Input: Target Allocation & Tax -->
         <div class="card">
-            <div class="card-header">2. Targets & Tax Settings</div>
+            <div class="card-header">2. Targets & Projection Settings</div>
             
             <div class="form-group">
                 <label>Asset Location Preference Strategy</label>
                 <select id="locationStrategy" onchange="calculateAllocation()">
-                    <option value="roth-first" selected>Protect AGI & Maximize Roth Growth (Roth First for Equities)</option>
+                    <option value="roth-first" selected>Protect AGI & Maximize Roth Growth (Roth First for High-Return Assets)</option>
                     <option value="ftc-first">Maximize Current Foreign Tax Credit (Taxable First for Int'l)</option>
                 </select>
+            </div>
+
+            <div class="form-group">
+                <label>Return Projection Horizon</label>
+                <select id="returnHorizon" onchange="calculateAllocation()">
+                    <option value="historical" selected>Long-Term 30-50 Year Historical (~10% US Eq / Historical Norms)</option>
+                    <option value="conservative">Conservative 10-Year Outlook (High Valuations / Institutional Forecasts)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Growth Projection Period (Years)</label>
+                <input type="number" id="projectionYears" value="10" min="1" max="100" onchange="calculateAllocation()">
             </div>
 
             <div class="form-group">
@@ -109,7 +122,7 @@
                 <input type="number" id="targetIntlScv" value="3.75" step="0.01" onchange="calculateAllocation()">
             </div>
             <div class="form-group">
-                <label>Bonds Target (%)</label>
+                <label>Global Bonds Target (%)</label>
                 <input type="number" id="targetBonds" value="10" onchange="calculateAllocation()">
             </div>
             
@@ -137,9 +150,9 @@
 <script>
     let state = {
         accounts: [
-            { id: '1', name: 'Fidelity 401(k)', type: 'tax-deferred', provider: 'fidelity', balance: 100000 },
-            { id: '2', name: 'Vanguard Roth IRA', type: 'tax-free', provider: 'vanguard', balance: 50000 },
-            { id: '3', name: 'Vanguard Taxable', type: 'taxable', provider: 'vanguard', balance: 10000 }
+            { id: '1', name: 'Fidelity 401(k)', type: 'tax-deferred', provider: 'fidelity', balance: 500000 },
+            { id: '2', name: 'Vanguard Roth IRA', type: 'tax-free', provider: 'vanguard', balance: 200000 },
+            { id: '3', name: 'Vanguard Taxable', type: 'taxable', provider: 'vanguard', balance: 100000 }
         ]
     };
 
@@ -150,9 +163,9 @@
             generic: { ticker: 'VTI', name: 'Total Stock Market ETF', er: 0.03 }
         },
         intlEquity: {
-            vanguard: { ticker: 'VXUS', name: 'Vanguard Total Int\'l Stock ETF', er: 0.05 },
+            vanguard: { ticker: 'VXUS', name: 'Vanguard Total Int\'l Stock ETF', er: 0.07 },
             fidelity: { ticker: 'FTIHX', name: 'Fidelity Total Int\'l Index Fund', er: 0.06 },
-            generic: { ticker: 'VXUS', name: 'Total Int\'l Stock ETF', er: 0.05 }
+            generic: { ticker: 'VXUS', name: 'Total Int\'l Stock ETF', er: 0.07 }
         },
         usScv: {
             vanguard: { ticker: 'AVUV', name: 'Avantis US Small Cap Value ETF', er: 0.25 },
@@ -164,15 +177,32 @@
             fidelity: { ticker: 'AVDV', name: 'Avantis Int\'l Small Cap Value ETF', er: 0.36 },
             generic: { ticker: 'AVDV', name: 'Avantis Int\'l Small Cap Value ETF', er: 0.36 }
         },
-		bonds: {
-			vanguard: { ticker: 'VGIT', name: 'Vanguard Intermediate-Term Treasury ETF', er: 0.03 },
-			fidelity: { ticker: 'FUAMX', name: 'Fidelity Intermediate Treasury Index Fund', er: 0.03 },
-			generic: { ticker: 'VGIT', name: 'Intermediate Treasury ETF', er: 0.03 }
-		}    
-	};
+        bonds: {
+            vanguard: { ticker: 'VGIT', name: 'Vanguard Intermediate-Term Treasury ETF', er: 0.04 },
+            fidelity: { ticker: 'FUAMX', name: 'Fidelity Intermediate Treasury Index Fund', er: 0.03 },
+            generic: { ticker: 'VGIT', name: 'Intermediate Treasury ETF', er: 0.04 }
+        }
+    };
+
+    const returnProfiles = {
+        historical: {
+            usEquity: 0.100,
+            intlEquity: 0.085,
+            usScv: 0.115,
+            intlScv: 0.105,
+            bonds: 0.045
+        },
+        conservative: {
+            usEquity: 0.055,
+            intlEquity: 0.065,
+            usScv: 0.075,
+            intlScv: 0.080,
+            bonds: 0.042
+        }
+    };
 
     const assetTaxProfiles = {
-		usEquity:   { yield: 0.014, qualPct: 1.00, ftc: 0.00, stateExempt: false },
+        usEquity:   { yield: 0.014, qualPct: 1.00, ftc: 0.00, stateExempt: false },
         intlEquity: { yield: 0.030, qualPct: 0.73, ftc: 0.0024, stateExempt: false },
         usScv:       { yield: 0.020, qualPct: 0.95, ftc: 0.00, stateExempt: false },
         intlScv:    { yield: 0.032, qualPct: 0.70, ftc: 0.0025, stateExempt: false },
@@ -193,13 +223,11 @@
         };
     }
 
-	function calculateAssetTaxDragRate(assetKey, rates) {
+    function calculateAssetTaxDragRate(assetKey, rates) {
         const profile = assetTaxProfiles[assetKey] || { yield: 0.02, qualPct: 1.0, ftc: 0, stateExempt: false };
         const fedOrd = (parseFloat(document.getElementById('taxFederal').value) || 0) / 100;
-        
-        // Use federal rate only if asset is state tax exempt (e.g., US Treasuries)
         const effectiveOrdRate = profile.stateExempt ? fedOrd : rates.ordRate;
-        
+
         const qualTax = profile.yield * profile.qualPct * rates.qualRate;
         const ordTax = profile.yield * (1 - profile.qualPct) * effectiveOrdRate;
         const grossTax = qualTax + ordTax;
@@ -263,6 +291,8 @@
         if (totalPortfolio === 0) return;
 
         const strategy = document.getElementById('locationStrategy').value;
+        const horizon = document.getElementById('returnHorizon').value;
+        const currentReturns = returnProfiles[horizon] || returnProfiles.historical;
 
         const targets = {
             usEquity: (parseFloat(document.getElementById('targetUsEquity').value) || 0) / 100,
@@ -307,14 +337,12 @@
             }
         }
 
-        const rates = getTaxRates();
-
         // Priority 1: Bonds -> Tax-Deferred, Taxable, Tax-Free
         allocateAsset('bonds', ['tax-deferred', 'taxable', 'tax-free']);
 
-        // Priority 2: Small Cap Value
+        // Priority 2: Small Cap Value (Highest Return: 10.5% - 11.5%) -> Fill Roth first
         const scvAssets = ['usScv', 'intlScv'].sort((a, b) => {
-            return calculateAssetTaxDragRate(b, rates) - calculateAssetTaxDragRate(a, rates);
+            return currentReturns[b] - currentReturns[a];
         });
 
         scvAssets.forEach(assetKey => {
@@ -325,14 +353,16 @@
             }
         });
 
-        // Priority 3: Low-Yield US Broad Equity
-        allocateAsset('usEquity', ['taxable', 'tax-deferred', 'tax-free']);
-
-        // Priority 4: Broad International Equity
-        if (strategy === 'ftc-first') {
-            allocateAsset('intlEquity', ['taxable', 'tax-free', 'tax-deferred']);
+        // Priority 3 & 4: Broad Equities
+        if (strategy === 'roth-first') {
+            // US Broad Equity has higher return: fills Taxable for low dividend yield, then fills remaining Roth, then 401(k)
+            allocateAsset('usEquity', ['taxable', 'tax-free', 'tax-deferred']);
+            // Int'l Broad Equity has lower return: fills 401(k) first, then Roth, then Taxable
+            allocateAsset('intlEquity', ['tax-deferred', 'tax-free', 'taxable']);
         } else {
-            allocateAsset('intlEquity', ['tax-free', 'tax-deferred', 'taxable']);
+            // ftc-first strategy: prioritize Int'l in Taxable to claim foreign tax credit
+            allocateAsset('intlEquity', ['taxable', 'tax-free', 'tax-deferred']);
+            allocateAsset('usEquity', ['taxable', 'tax-free', 'tax-deferred']);
         }
 
         renderResults(accountsWorking, totalPortfolio);
@@ -344,9 +374,15 @@
         container.innerHTML = '';
 
         const rates = getTaxRates();
+        const horizon = document.getElementById('returnHorizon').value;
+        const years = Math.max(1, parseFloat(document.getElementById('projectionYears').value) || 10);
+        const currentReturns = returnProfiles[horizon] || returnProfiles.historical;
+
         let totalWeightedEr = 0;
+        let totalWeightedReturn = 0;
         let actualTaxDrag = 0;
         let shelteredTaxDrag = 0;
+        let totalProjectedBalance = 0;
 
         allocatedAccounts.forEach(acc => {
             if (acc.balance === 0) return;
@@ -360,15 +396,20 @@
             if (acc.type === 'tax-free') badgeClass = 'badge-free';
 
             let rowsHtml = '';
+            let accWeightedReturn = 0;
+
             acc.allocations.forEach(alloc => {
                 const fundInfo = (fundMap[alloc.assetKey] && fundMap[alloc.assetKey][acc.provider]) 
                     ? fundMap[alloc.assetKey][acc.provider] 
                     : fundMap[alloc.assetKey]['generic'];
 
+                const expReturn = currentReturns[alloc.assetKey] || 0.07;
                 const pctOfAccount = (alloc.dollars / acc.balance) * 100;
                 const pctOfTotal = (alloc.dollars / totalPortfolio) * 100;
                 
                 totalWeightedEr += (alloc.dollars / totalPortfolio) * fundInfo.er;
+                totalWeightedReturn += (alloc.dollars / totalPortfolio) * expReturn;
+                accWeightedReturn += (alloc.dollars / acc.balance) * expReturn;
 
                 const dragRate = calculateAssetTaxDragRate(alloc.assetKey, rates);
                 const dragDollars = alloc.dollars * dragRate;
@@ -389,6 +430,7 @@
                         <td>$${Math.round(alloc.dollars).toLocaleString()}</td>
                         <td>${pctOfAccount.toFixed(1)}%</td>
                         <td>${pctOfTotal.toFixed(2)}%</td>
+                        <td>${(expReturn * 100).toFixed(2)}%</td>
                         <td>${fundInfo.er.toFixed(3)}%</td>
                         <td class="${statusClass}">
                             $${Math.round(dragDollars).toLocaleString()}/yr (${(dragRate * 100).toFixed(2)}%)
@@ -398,9 +440,18 @@
                 `;
             });
 
+            const accFutureValue = acc.balance * Math.pow(1 + accWeightedReturn, years);
+            totalProjectedBalance += accFutureValue;
+
             card.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
-                    <span style="font-weight:600;">${acc.name} ($${acc.balance.toLocaleString()})</span>
+                    <div>
+                        <span style="font-weight:600;">${acc.name} ($${acc.balance.toLocaleString()})</span>
+                        <span style="color: var(--accent-blue); font-size: 0.85rem; margin-left: 10px; font-weight: 500;">
+                            Est. Return: ${(accWeightedReturn * 100).toFixed(2)}% | 
+                            Projected in ${years} yrs: <strong style="color: var(--accent-green);">$${Math.round(accFutureValue).toLocaleString()}</strong>
+                        </span>
+                    </div>
                     <span class="badge ${badgeClass}">${acc.type.toUpperCase()}</span>
                 </div>
                 <table>
@@ -411,6 +462,7 @@
                             <th>Amount</th>
                             <th>Account %</th>
                             <th>Total %</th>
+                            <th>Est. Return</th>
                             <th>Exp. Ratio</th>
                             <th>Est. Tax Drag (In Taxable Account)</th>
                         </tr>
@@ -424,15 +476,27 @@
 
         const currentStrategy = document.getElementById('locationStrategy').value;
         const strategyText = currentStrategy === 'roth-first' 
-            ? 'Protect AGI & Maximize Roth Growth (Roth prioritizes growth/international equities).' 
-            : 'Maximize Foreign Tax Credit (Taxable prioritizes international equities).';
+            ? 'Protect AGI & Maximize Roth Growth' 
+            : 'Maximize Foreign Tax Credit';
+        
+        const horizonText = horizon === 'historical' 
+            ? '30-50 Year Historical Baseline' 
+            : 'Conservative 10-Year Outlook';
 
         summaryBox.innerHTML = `
-            <div><strong>Portfolio Strategy Summary</strong> (${strategyText})</div>
+            <div><strong>Portfolio Strategy:</strong> ${strategyText} | <strong>Return Model:</strong> ${horizonText}</div>
             <div class="summary-grid">
                 <div class="metric-card">
-                    <div class="metric-title">TOTAL PORTFOLIO</div>
+                    <div class="metric-title">CURRENT PORTFOLIO</div>
                     <div class="metric-value">$${totalPortfolio.toLocaleString()}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">EST. PORTFOLIO RETURN</div>
+                    <div class="metric-value text-sheltered">${(totalWeightedReturn * 100).toFixed(2)}% <span style="font-size:0.75rem; color:var(--text-secondary);">($${Math.round(totalPortfolio * totalWeightedReturn).toLocaleString()}/yr)</span></div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">PROJECTED (${years} YRS)</div>
+                    <div class="metric-value text-sheltered">$${Math.round(totalProjectedBalance).toLocaleString()}</div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-title">WEIGHTED EXPENSE RATIO</div>
@@ -441,10 +505,6 @@
                 <div class="metric-card">
                     <div class="metric-title">ACTUAL TAX DRAG (TAXABLE)</div>
                     <div class="metric-value text-taxable">$${Math.round(actualTaxDrag).toLocaleString()}/yr</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-title">TAX DRAG SHELTERED</div>
-                    <div class="metric-value text-sheltered">$${Math.round(shelteredTaxDrag).toLocaleString()}/yr</div>
                 </div>
             </div>
         `;
