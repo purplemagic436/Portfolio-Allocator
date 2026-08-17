@@ -106,6 +106,14 @@
             </div>
 
             <div class="form-group">
+                <label>Intertemporal Rebalancing Protocol</label>
+                <select id="rebalanceProtocol" onchange="calculateAllocation()">
+                    <option value="rebalance-annual" selected>Annual Target Rebalancing (Maintain Fixed Portfolio Targets)</option>
+                    <option value="buy-hold">Unconstrained Asset Drift (Buy & Hold / No Rebalancing)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
                 <label>Intertemporal Compounding Horizon (Years)</label>
                 <input type="number" id="projectionYears" value="10" min="1" max="100" onchange="calculateAllocation()">
             </div>
@@ -298,6 +306,67 @@
         }
     }
 
+    function generateLocationMatrix(accountList, totalPortfolio, targets, strategy, currentReturns) {
+        const remainingNeeded = {
+            bonds: totalPortfolio * targets.bonds,
+            usScv: totalPortfolio * targets.usScv,
+            intlScv: totalPortfolio * targets.intlScv,
+            usEquity: totalPortfolio * targets.usEquity,
+            intlEquity: totalPortfolio * targets.intlEquity
+        };
+
+        let workingAccounts = accountList.map(a => ({
+            ...a,
+            capacityLeft: a.balance,
+            allocations: []
+        }));
+
+        function allocateAsset(assetKey, preferredTypes) {
+            for (let type of preferredTypes) {
+                if (remainingNeeded[assetKey] <= 0.001) break;
+
+                const eligible = workingAccounts.filter(a => a.type === type && a.capacityLeft > 0);
+                for (let acc of eligible) {
+                    if (remainingNeeded[assetKey] <= 0.001) break;
+
+                    const fill = Math.min(remainingNeeded[assetKey], acc.capacityLeft);
+                    if (fill > 0) {
+                        acc.allocations.push({
+                            assetKey: assetKey,
+                            dollars: fill
+                        });
+                        acc.capacityLeft -= fill;
+                        remainingNeeded[assetKey] -= fill;
+                    }
+                }
+            }
+        }
+
+        // Priority 1: Treasuries
+        allocateAsset('bonds', ['tax-deferred', 'taxable', 'tax-free']);
+
+        // Priority 2: Small Cap Value
+        const scvAssets = ['usScv', 'intlScv'].sort((a, b) => currentReturns[b] - currentReturns[a]);
+        scvAssets.forEach(assetKey => {
+            if (assetKey === 'intlScv' && strategy === 'ftc-first') {
+                allocateAsset(assetKey, ['taxable', 'tax-free', 'tax-deferred']);
+            } else {
+                allocateAsset(assetKey, ['tax-free', 'tax-deferred', 'taxable']);
+            }
+        });
+
+        // Priority 3 & 4: Broad Equities
+        if (strategy === 'roth-first') {
+            allocateAsset('usEquity', ['taxable', 'tax-free', 'tax-deferred']);
+            allocateAsset('intlEquity', ['tax-deferred', 'tax-free', 'taxable']);
+        } else {
+            allocateAsset('intlEquity', ['taxable', 'tax-free', 'tax-deferred']);
+            allocateAsset('usEquity', ['taxable', 'tax-free', 'tax-deferred']);
+        }
+
+        return workingAccounts;
+    }
+
     function calculateAllocation() {
         const errorBox = document.getElementById('allocationError');
         const targetUsEquity = parseFloat(document.getElementById('targetUsEquity').value) || 0;
@@ -311,7 +380,7 @@
 
         if (diff > 0.001) {
             errorBox.style.display = 'block';
-            errorBox.textContent = `CRITICAL CONFIGURATION ERROR: Portfolio target allocations sum to ${totalTargetPct.toFixed(2)}%, not 100.00%. Correct the parameters to execute asset placement.`;
+            errorBox.textContent = `CRITICAL CONFIGURATION ERROR: Portfolio target allocations sum to ${totalTargetPct.toFixed(2)}%, not 100.00%. Correct parameters to execute placement.`;
         } else {
             errorBox.style.display = 'none';
         }
@@ -331,70 +400,11 @@
             bonds: targetBonds / 100
         };
 
-        const remainingNeeded = {
-            bonds: totalPortfolio * targets.bonds,
-            usScv: totalPortfolio * targets.usScv,
-            intlScv: totalPortfolio * targets.intlScv,
-            usEquity: totalPortfolio * targets.usEquity,
-            intlEquity: totalPortfolio * targets.intlEquity
-        };
-
-        let accountsWorking = state.accounts.map(a => ({
-            ...a,
-            capacityLeft: a.balance,
-            allocations: []
-        }));
-
-        function allocateAsset(assetKey, preferredTypes) {
-            for (let type of preferredTypes) {
-                if (remainingNeeded[assetKey] <= 0.01) break;
-
-                const eligible = accountsWorking.filter(a => a.type === type && a.capacityLeft > 0);
-                for (let acc of eligible) {
-                    if (remainingNeeded[assetKey] <= 0.01) break;
-
-                    const fill = Math.min(remainingNeeded[assetKey], acc.capacityLeft);
-                    if (fill > 0) {
-                        acc.allocations.push({
-                            assetKey: assetKey,
-                            dollars: fill
-                        });
-                        acc.capacityLeft -= fill;
-                        remainingNeeded[assetKey] -= fill;
-                    }
-                }
-            }
-        }
-
-        // Priority 1: Treasuries
-        allocateAsset('bonds', ['tax-deferred', 'taxable', 'tax-free']);
-
-        // Priority 2: Small Cap Value
-        const scvAssets = ['usScv', 'intlScv'].sort((a, b) => {
-            return currentReturns[b] - currentReturns[a];
-        });
-
-        scvAssets.forEach(assetKey => {
-            if (assetKey === 'intlScv' && strategy === 'ftc-first') {
-                allocateAsset(assetKey, ['taxable', 'tax-free', 'tax-deferred']);
-            } else {
-                allocateAsset(assetKey, ['tax-free', 'tax-deferred', 'taxable']);
-            }
-        });
-
-        // Priority 3 & 4: Broad Equities
-        if (strategy === 'roth-first') {
-            allocateAsset('usEquity', ['taxable', 'tax-free', 'tax-deferred']);
-            allocateAsset('intlEquity', ['tax-deferred', 'tax-free', 'taxable']);
-        } else {
-            allocateAsset('intlEquity', ['taxable', 'tax-free', 'tax-deferred']);
-            allocateAsset('usEquity', ['taxable', 'tax-free', 'tax-deferred']);
-        }
-
-        renderResults(accountsWorking, totalPortfolio);
+        const accountsWorking = generateLocationMatrix(state.accounts, totalPortfolio, targets, strategy, currentReturns);
+        renderResults(accountsWorking, totalPortfolio, targets, strategy, currentReturns);
     }
 
-    function renderResults(allocatedAccounts, totalPortfolio) {
+    function renderResults(allocatedAccounts, totalPortfolio, targets, strategy, currentReturns) {
         const container = document.getElementById('resultsContainer');
         const summaryBox = document.getElementById('summaryMetrics');
         container.innerHTML = '';
@@ -402,7 +412,7 @@
         const rates = getTaxRates();
         const horizon = document.getElementById('returnHorizon').value;
         const years = Math.max(1, parseFloat(document.getElementById('projectionYears').value) || 10);
-        const currentReturns = returnProfiles[horizon] || returnProfiles.historical;
+        const rebalanceMode = document.getElementById('rebalanceProtocol').value;
 
         let totalWeightedGrossReturn = 0;
         let totalWeightedEr = 0;
@@ -410,6 +420,60 @@
         let shelteredTaxDrag = 0;
         let totalGrossProjectedBalance = 0;
         let totalNetProjectedBalance = 0;
+
+        let accountTerminalValues = {};
+
+        if (rebalanceMode === 'rebalance-annual') {
+            // Year-by-year simulated rebalancing across accounts
+            let simAccounts = state.accounts.map(a => ({
+                id: a.id,
+                name: a.name,
+                type: a.type,
+                provider: a.provider,
+                balance: a.balance,
+                taxableCostBasis: a.type === 'taxable' ? a.balance : 0
+            }));
+
+            for (let y = 1; y <= years; y++) {
+                let currentTotal = simAccounts.reduce((sum, a) => sum + a.balance, 0);
+                let currentAllocation = generateLocationMatrix(simAccounts, currentTotal, targets, strategy, currentReturns);
+
+                currentAllocation.forEach(acc => {
+                    let accSim = simAccounts.find(a => a.id === acc.id);
+                    let accGrossFactor = 0;
+                    let accTaxDragDollars = 0;
+
+                    acc.allocations.forEach(alloc => {
+                        let fundInfo = (fundMap[alloc.assetKey] && fundMap[alloc.assetKey][acc.provider]) 
+                            ? fundMap[alloc.assetKey][acc.provider] 
+                            : fundMap[alloc.assetKey]['generic'];
+                        let expGross = currentReturns[alloc.assetKey] || 0.07;
+                        let er = fundInfo.er / 100;
+                        let netYield = expGross - er;
+                        let dragRate = calculateAssetTaxDragRate(alloc.assetKey, rates);
+
+                        accGrossFactor += alloc.dollars * netYield;
+                        if (acc.type === 'taxable') {
+                            accTaxDragDollars += alloc.dollars * dragRate;
+                        }
+                    });
+
+                    accSim.balance = accSim.balance + accGrossFactor - accTaxDragDollars;
+                });
+            }
+
+            simAccounts.forEach(acc => {
+                let grossEnd = acc.balance;
+                let netEnd = grossEnd;
+                if (acc.type === 'tax-deferred') {
+                    netEnd = grossEnd * (1 - rates.ordRate);
+                } else if (acc.type === 'taxable') {
+                    let taxableGain = Math.max(0, grossEnd - acc.taxableCostBasis);
+                    netEnd = grossEnd - (taxableGain * rates.ltcgRate);
+                }
+                accountTerminalValues[acc.id] = { gross: grossEnd, net: netEnd };
+            });
+        }
 
         allocatedAccounts.forEach(acc => {
             if (acc.balance === 0) return;
@@ -425,7 +489,6 @@
             let rowsHtml = '';
             let accGrossReturn = 0;
             let accWeightedEr = 0;
-            let accAnnualTaxDragRate = 0;
             let accFutureValueGross = 0;
             let accFutureValueNet = 0;
 
@@ -486,24 +549,29 @@
                 `;
             });
 
-            if (acc.type === 'tax-free') {
-                const rNetAnnual = accGrossReturn - accWeightedEr;
-                accFutureValueGross = acc.balance * Math.pow(1 + rNetAnnual, years);
-                accFutureValueNet = accFutureValueGross;
-            } else if (acc.type === 'tax-deferred') {
-                const rPreTax = accGrossReturn - accWeightedEr;
-                accFutureValueGross = acc.balance * Math.pow(1 + rPreTax, years);
-                accFutureValueNet = accFutureValueGross * (1 - rates.ordRate);
-            } else if (acc.type === 'taxable') {
-                let accDragSum = 0;
-                acc.allocations.forEach(alloc => {
-                    const dragRate = calculateAssetTaxDragRate(alloc.assetKey, rates);
-                    accDragSum += (alloc.dollars / acc.balance) * dragRate;
-                });
-                const rAnnualCompound = accGrossReturn - accWeightedEr - accDragSum;
-                accFutureValueGross = acc.balance * Math.pow(1 + rAnnualCompound, years);
-                const taxableGain = Math.max(0, accFutureValueGross - acc.balance);
-                accFutureValueNet = accFutureValueGross - (taxableGain * rates.ltcgRate);
+            if (rebalanceMode === 'rebalance-annual') {
+                accFutureValueGross = accountTerminalValues[acc.id].gross;
+                accFutureValueNet = accountTerminalValues[acc.id].net;
+            } else {
+                if (acc.type === 'tax-free') {
+                    const rNetAnnual = accGrossReturn - accWeightedEr;
+                    accFutureValueGross = acc.balance * Math.pow(1 + rNetAnnual, years);
+                    accFutureValueNet = accFutureValueGross;
+                } else if (acc.type === 'tax-deferred') {
+                    const rPreTax = accGrossReturn - accWeightedEr;
+                    accFutureValueGross = acc.balance * Math.pow(1 + rPreTax, years);
+                    accFutureValueNet = accFutureValueGross * (1 - rates.ordRate);
+                } else if (acc.type === 'taxable') {
+                    let accDragSum = 0;
+                    acc.allocations.forEach(alloc => {
+                        const dragRate = calculateAssetTaxDragRate(alloc.assetKey, rates);
+                        accDragSum += (alloc.dollars / acc.balance) * dragRate;
+                    });
+                    const rAnnualCompound = accGrossReturn - accWeightedEr - accDragSum;
+                    accFutureValueGross = acc.balance * Math.pow(1 + rAnnualCompound, years);
+                    const taxableGain = Math.max(0, accFutureValueGross - acc.balance);
+                    accFutureValueNet = accFutureValueGross - (taxableGain * rates.ltcgRate);
+                }
             }
 
             const accNetAnnualizedRate = (Math.pow(accFutureValueNet / acc.balance, 1 / years) - 1);
@@ -515,7 +583,7 @@
                     <div>
                         <span style="font-weight:600;">${acc.name} ($${acc.balance.toLocaleString()})</span>
                         <span style="color: var(--text-secondary); font-size: 0.82rem; margin-left: 8px;">
-                            Gross Yield: ${(accGrossReturn * 100).toFixed(2)}% | 
+                            Day 1 Yield: ${(accGrossReturn * 100).toFixed(2)}% | 
                             Net Post-Tax & Fee CAGR: <strong style="color: var(--accent-purple);">${(accNetAnnualizedRate * 100).toFixed(2)}%</strong> | 
                             Net Terminal Value (${years}y): <strong style="color: var(--accent-green);">$${Math.round(accFutureValueNet).toLocaleString()}</strong>
                         </span>
@@ -554,8 +622,12 @@
             ? '30-50 Year Historical Norms' 
             : 'Conservative 10-Year Outlook';
 
+        const rebalanceText = rebalanceMode === 'rebalance-annual'
+            ? 'Target Weights Maintained Annually'
+            : 'Unconstrained Drift (Buy & Hold)';
+
         summaryBox.innerHTML = `
-            <div><strong>Synthesized Architecture:</strong> ${strategyText} | <strong>Macro Model:</strong> ${horizonText}</div>
+            <div><strong>Protocol:</strong> ${strategyText} | <strong>Model:</strong> ${horizonText} | <strong>Rebalancing:</strong> ${rebalanceText}</div>
             <div class="summary-grid">
                 <div class="metric-card">
                     <div class="metric-title">Aggregate Endowment</div>
